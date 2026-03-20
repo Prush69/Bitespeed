@@ -1,0 +1,5 @@
+{
+  "name": "BiteSpeed Identity Reconciliation",
+  "description": "A web service that identifies and keeps track of a customer's identity across multiple purchases.",
+  "requestFramePermissions": []
+}
