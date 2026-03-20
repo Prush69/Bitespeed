@@ -7,13 +7,11 @@ This is a backend service for Bitespeed's Identity Reconciliation task, built to
 - **Frontend Testing UI**: [https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/](https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/)
 - **API Endpoint**: [https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/identify](https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/identify)
 
-*Note: The app is currently hosted on Cloud Run using an in-memory/ephemeral SQLite DB for demonstration purposes. In a true production environment, I would connect this to a managed PostgreSQL instance to ensure data persistence across container scale-downs.*
-
 ## Tech Stack Justification
 
 - **Next.js (App Router)**: Provides a robust, unified framework for both the backend API routes (`/api/identify`) and a clean frontend UI to test the endpoint easily.
 - **TypeScript**: Ensures type safety, reducing runtime errors and making the data structures (like the `Contact` model) explicit and easy to reason about.
-- **better-sqlite3**: A fast, synchronous SQLite driver for Node.js. It's perfect for a lightweight, zero-config relational database setup for this assignment.
+- **PostgreSQL (`pg`)**: A robust, production-ready relational database. Used to ensure data persistence and reliability in serverless environments (like Vercel).
 - **Tailwind CSS**: Used for rapidly styling the frontend testing interface.
 
 ## Architecture & Logic Summary
@@ -43,12 +41,18 @@ The core logic resides in `app/api/identify/route.ts`. When a request comes in w
    npm install
    ```
 
-3. **Run the development server**:
+3. **Set up Environment Variables**:
+   Create a `.env` file in the root directory and add your PostgreSQL connection string:
+   ```env
+   DATABASE_URL="postgresql://user:password@hostname/dbname?sslmode=require"
+   ```
+
+4. **Run the development server**:
    ```bash
    npm run dev
    ```
 
-4. **Test the API**:
+5. **Test the API**:
    - Open [http://localhost:3000](http://localhost:3000) in your browser to use the frontend UI.
    - Or send a POST request to `http://localhost:3000/identify`:
      ```bash

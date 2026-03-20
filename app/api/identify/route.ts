@@ -6,8 +6,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     let { email, phoneNumber } = body;
 
-    // The prompt says "phoneNumber"?: number, but examples use strings.
-    // We should handle both and convert to string.
     if (email) email = String(email);
     if (phoneNumber) phoneNumber = String(phoneNumber);
 
@@ -19,30 +17,29 @@ export async function POST(req: Request) {
     }
 
     // 1. Find matching contacts
-    const matches = db
-      .prepare(
-        `
-      SELECT * FROM Contact 
-      WHERE (email = ? AND email IS NOT NULL) 
-         OR (phoneNumber = ? AND phoneNumber IS NOT NULL)
-    `,
-      )
-      .all(email || null, phoneNumber || null) as any[];
+    const matchesResult = await db.query(
+      `SELECT * FROM "Contact" 
+       WHERE (email = $1 AND email IS NOT NULL) 
+          OR ("phoneNumber" = $2 AND "phoneNumber" IS NOT NULL)`,
+      [email || null, phoneNumber || null]
+    );
+    const matches = matchesResult.rows;
 
     const now = new Date().toISOString();
 
     if (matches.length === 0) {
       // Create new primary
-      const insert = db.prepare(`
-        INSERT INTO Contact (email, phoneNumber, linkPrecedence, createdAt, updatedAt)
-        VALUES (?, ?, 'primary', ?, ?)
-      `);
-      const info = insert.run(email || null, phoneNumber || null, now, now);
+      const insertResult = await db.query(
+        `INSERT INTO "Contact" (email, "phoneNumber", "linkPrecedence", "createdAt", "updatedAt")
+         VALUES ($1, $2, 'primary', $3, $4) RETURNING id`,
+        [email || null, phoneNumber || null, now, now]
+      );
+      const newId = insertResult.rows[0].id;
 
       return NextResponse.json({
         contact: {
           // Note: Spelling kept as 'primaryContatctId' to match the spec payload.
-          primaryContatctId: info.lastInsertRowid,
+          primaryContatctId: newId,
           emails: email ? [email] : [],
           phoneNumbers: phoneNumber ? [phoneNumber] : [],
           secondaryContactIds: [],
@@ -61,21 +58,16 @@ export async function POST(req: Request) {
     }
 
     // Fetch all primary contacts
-    const placeholders = Array.from(primaryIds)
-      .map(() => "?")
-      .join(",");
-    const primaryContacts = db
-      .prepare(
-        `
-      SELECT * FROM Contact WHERE id IN (${placeholders})
-    `,
-      )
-      .all(...Array.from(primaryIds)) as any[];
+    const placeholders = Array.from(primaryIds).map((_, i) => `$${i + 1}`).join(',');
+    const primaryContactsResult = await db.query(
+      `SELECT * FROM "Contact" WHERE id IN (${placeholders})`,
+      Array.from(primaryIds)
+    );
+    const primaryContacts = primaryContactsResult.rows;
 
     // Sort by createdAt ASC to find the oldest primary
     primaryContacts.sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
 
     const winner = primaryContacts[0];
@@ -83,52 +75,48 @@ export async function POST(req: Request) {
 
     // 3. Update losers and their secondaries to point to winner
     if (losers.length > 0) {
-      const update = db.prepare(`
-        UPDATE Contact 
-        SET linkedId = ?, linkPrecedence = 'secondary', updatedAt = ?
-        WHERE id = ? OR linkedId = ?
-      `);
-
-      const updateMany = db.transaction((winnerId, updateTime, losersList) => {
-        for (const loser of losersList) {
-          update.run(winnerId, updateTime, loser.id, loser.id);
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        for (const loser of losers) {
+          await client.query(
+            `UPDATE "Contact" 
+             SET "linkedId" = $1, "linkPrecedence" = 'secondary', "updatedAt" = $2 
+             WHERE id = $3 OR "linkedId" = $4`,
+            [winner.id, now, loser.id, loser.id]
+          );
         }
-      });
-
-      updateMany(winner.id, now, losers);
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
     }
 
     // 4. Fetch ALL contacts in the tree
-    const allTreeContacts = db
-      .prepare(
-        `
-      SELECT * FROM Contact WHERE id = ? OR linkedId = ? ORDER BY createdAt ASC
-    `,
-      )
-      .all(winner.id, winner.id) as any[];
+    const allTreeContactsResult = await db.query(
+      `SELECT * FROM "Contact" WHERE id = $1 OR "linkedId" = $2 ORDER BY "createdAt" ASC`,
+      [winner.id, winner.id]
+    );
+    const allTreeContacts = allTreeContactsResult.rows;
 
     // 5. Check if we need to insert a new secondary
     const emailIsNew = email && !allTreeContacts.some((c) => c.email === email);
-    const phoneIsNew =
-      phoneNumber &&
-      !allTreeContacts.some((c) => c.phoneNumber === phoneNumber);
+    const phoneIsNew = phoneNumber && !allTreeContacts.some((c) => c.phoneNumber === phoneNumber);
 
     if (emailIsNew || phoneIsNew) {
-      const insertSecondary = db.prepare(`
-        INSERT INTO Contact (email, phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt)
-        VALUES (?, ?, ?, 'secondary', ?, ?)
-      `);
-      const info = insertSecondary.run(
-        email || null,
-        phoneNumber || null,
-        winner.id,
-        now,
-        now,
+      const insertSecondaryResult = await db.query(
+        `INSERT INTO "Contact" (email, "phoneNumber", "linkedId", "linkPrecedence", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, 'secondary', $4, $5) RETURNING id`,
+        [email || null, phoneNumber || null, winner.id, now, now]
       );
+      const newId = insertSecondaryResult.rows[0].id;
 
       // Add to tree contacts for response formatting
       allTreeContacts.push({
-        id: info.lastInsertRowid,
+        id: newId,
         email: email || null,
         phoneNumber: phoneNumber || null,
         linkedId: winner.id,
@@ -140,16 +128,13 @@ export async function POST(req: Request) {
     }
 
     // 6. Format response
-    // We need to ensure the primary contact's email and phone are the first elements
     const emails = new Set<string>();
     const phoneNumbers = new Set<string>();
     const secondaryContactIds: number[] = [];
 
-    // Add primary contact info first
     if (winner.email) emails.add(winner.email);
     if (winner.phoneNumber) phoneNumbers.add(winner.phoneNumber);
 
-    // Add the rest
     for (const c of allTreeContacts) {
       if (c.email) emails.add(c.email);
       if (c.phoneNumber) phoneNumbers.add(c.phoneNumber);

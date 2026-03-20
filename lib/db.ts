@@ -1,24 +1,29 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+import { Pool } from 'pg';
 
-// Store the database file in the /tmp directory in production, or locally in development
-const dbPath = process.env.NODE_ENV === 'production' 
-  ? '/tmp/bitespeed.db' 
-  : path.join(process.cwd(), 'bitespeed.db');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-const db = new Database(dbPath);
+const initDb = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "Contact" (
+        id SERIAL PRIMARY KEY,
+        "phoneNumber" VARCHAR(255),
+        email VARCHAR(255),
+        "linkedId" INTEGER,
+        "linkPrecedence" VARCHAR(50) CHECK("linkPrecedence" IN ('primary', 'secondary')) NOT NULL,
+        "createdAt" TIMESTAMP NOT NULL,
+        "updatedAt" TIMESTAMP NOT NULL,
+        "deletedAt" TIMESTAMP
+      );
+    `);
+    console.log("Database initialized successfully.");
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+  }
+};
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS Contact (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    phoneNumber TEXT,
-    email TEXT,
-    linkedId INTEGER,
-    linkPrecedence TEXT CHECK(linkPrecedence IN ('primary', 'secondary')) NOT NULL,
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL,
-    deletedAt TEXT
-  )
-`);
+initDb();
 
-export default db;
+export default pool;
