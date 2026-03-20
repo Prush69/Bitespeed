@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import db from "@/lib/db";
 
+interface IdentifyPayload {
+  email?: string | null;
+  phoneNumber?: string | number | null;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = (await req.json()) as IdentifyPayload;
     let { email, phoneNumber } = body;
 
     if (email) email = String(email);
@@ -152,8 +157,11 @@ export async function POST(req: Request) {
         secondaryContactIds,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ error: "An unknown error occurred" }, { status: 500 });
   }
 }
