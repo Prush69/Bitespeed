@@ -4,8 +4,8 @@ This is a backend service for Bitespeed's Identity Reconciliation task, built to
 
 ## Live URLs
 
-- **Frontend Testing UI**: [https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/](https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/)
-- **API Endpoint**: [https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/identify](https://ais-pre-7rxn4k77mzfv2vmyu6av36-600842021659.asia-east1.run.app/identify)
+- **Frontend Testing UI**: [https://bitespeed-kohl.vercel.app/](https://bitespeed-kohl.vercel.app/)
+- **API Endpoint**: [https://bitespeed-kohl.vercel.app/identify](https://bitespeed-kohl.vercel.app/identify)
 
 ## Tech Stack Justification
 
@@ -54,6 +54,7 @@ The core logic resides in `app/api/identify/route.ts`. When a request comes in w
 
 5. **Test the API**:
    - Open [http://localhost:3000](http://localhost:3000) in your browser to use the frontend UI.
+   - The database tables will be initialized automatically when the dev server starts (thanks to `lib/db.ts`).
    - Or send a POST request to `http://localhost:3000/identify`:
      ```bash
      curl -X POST http://localhost:3000/identify \
